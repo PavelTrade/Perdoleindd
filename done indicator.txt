@@ -1,0 +1,676 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © PavelTradee
+
+// © PavelTradee
+
+//@version=5
+indicator('M&D Trading indicator', 'M&D Trading indicator', overlay=true, max_bars_back=1000, max_lines_count=200)
+length = input.int(50, 'Evaluation Window', minval=0, maxval=200)
+fcast = input.int(50, 'Forecast Window', minval=1, maxval=200)
+
+fmode = input.string('Similarity', 'Forecast Mode', options=['Similarity', 'Dissimilarity'])
+cmode = input.string('Cumulative', 'Forecast Construction', options=['Cumulative', 'Mean', 'Linreg'])
+src = input(close)
+
+fcast_col = input.color(#2157f3, 'Forecast Style', inline='fcast_style', group='Style')
+fcast_style = input.string('· · ·', '', options=['──', '- - -', '· · ·'], inline='fcast_style', group='Style')
+
+show_area = input.bool(true, 'Show Area', inline='areas', group='Style')
+fcast_area = input.color(color.new(#ff5e00, 100), '', inline='areas', group='Style')
+corr_area = input.color(color.new(#0cb51a, 100), '', inline='areas', group='Style')
+eval_area = input.color(color.new(#787b86, 100), '', inline='areas', group='Style')
+//----
+var lines = array.new_line(0)
+if barstate.isfirst
+    for i = 0 to fcast - 1 by 1
+        array.push(lines, line.new(na, na, na, na))
+//----
+n = bar_index
+d = ta.change(src)
+
+top = ta.highest(src, length + fcast * 2)
+btm = ta.lowest(src, length + fcast * 2)
+
+if barstate.islast
+    float val = na
+    k = 0
+    A = array.new_float(0)
+    X = array.new_int(0)
+    for i = 0 to fcast * 2 + length by 1
+        array.push(A, src[i])
+        if cmode == 'Linreg'
+            array.push(X, n[i])
+
+    a = array.slice(A, 0, fcast - 1)
+    for i = 0 to length - 1 by 1
+        b = array.slice(A, fcast + i, fcast * 2 + i - 1)
+        r = array.covariance(a, b) / (array.stdev(a) * array.stdev(b))
+        if fmode == 'Similarity'
+            val := r >= nz(val, r) ? r : val
+            val
+        else
+            val := r <= nz(val, r) ? r : val
+            val
+        k := val == r ? i : k
+        k
+
+    prev = src
+    current = src
+
+    for i = 0 to fcast - 1 by 1
+        e = d[fcast + k + fcast - i - 1]
+        if cmode == 'Mean'
+            current := array.avg(a) + e
+            current
+        else if cmode == 'Linreg'
+            a := array.slice(A, 0, fcast)
+            x = array.slice(X, 0, fcast)
+            alpha = array.covariance(a, x) / array.variance(x)
+            beta = array.avg(a) - alpha * array.avg(x)
+            current := alpha * (n + i + 1) + beta + e
+            current
+        else
+            current += e
+            current
+
+        l = array.get(lines, i)
+        line.set_xy1(l, n + i, prev)
+        line.set_xy2(l, n + i + 1, current)
+        line.set_color(l, fcast_col)
+
+        if fcast_style == '- - -'
+            line.set_style(l, line.style_dashed)
+        else if fcast_style == '· · ·'
+            line.set_style(l, line.style_dotted)
+
+        prev := current
+        prev
+
+    if show_area
+        box.delete(box.new(n - length - fcast * 2 + 1, top, n - fcast + 1, btm, border_color=na, bgcolor=eval_area)[1])
+        box.delete(box.new(n - fcast + 1, top, n, btm, border_color=na, bgcolor=fcast_area)[1])
+        box.delete(box.new(n - k - fcast * 2 + 1, btm, n - k - fcast, top, border_color=na, bgcolor=corr_area)[1])
+
+
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © LeviathanCapital
+
+//@version=5
+
+
+
+// Box generation code inspired by Jos(TradingCode), session box visuals inspired by @boitoki
+
+// Session 1 - user inputs
+showTokyo      = input.bool(false, '', inline='Tokyo', group='Sessions')
+stringTokyo    = input.string('Tokyo', '', inline='Tokyo', group='Sessions')
+TokyoTimeX     = input.session(defval="0000-0900", title='     ', inline='Tokyo2', group='Sessions', tooltip = 'If you want to change the start/end time of the session, just make sure they are in UTC. There is no need to change the timezone of your Tradingview chart or to change the Timezone input below, because the sessions will be plotted correctly as long as the start/end time is set in UTC.')
+TokyoCol       = input.color(color.rgb(255, 153, 0, 90), '' , inline='Tokyo', group='Sessions')
+// Session 2 - user inputs
+showLondon     = input.bool(false, '', inline='London', group='Sessions')
+stringLondon   = input.string('London', '', inline='London', group='Sessions')
+LondonTimeX    = input.session(defval="0700-1600", title='     ', inline='London2', group='Sessions', tooltip = 'If you want to change the start/end time of the session, just make sure they are in UTC. There is no need to change the timezone of your Tradingview chart or to change the Timezone input below, because the sessions will be plotted correctly as long as the start/end time is set in UTC.')
+LondonCol      = input.color(color.rgb(76, 175, 79, 90), '' , inline='London', group='Sessions')
+// Session 3 - user inputs
+showNewYork    = input.bool(false, title='', inline='New York', group='Sessions')
+stringNewYork  = input.string('New York', '', inline='New York', group='Sessions')
+NewYorkTimeX   = input.session(defval="1300-2200", title='     ', inline='New York2', group='Sessions', tooltip = 'If you want to change the start/end time of the session, just make sure they are in UTC. There is no need to change the timezone of your Tradingview chart or to change the Timezone input below, because the sessions will be plotted correctly as long as the start/end time is set in UTC.')
+NewYorkCol     = input.color(color.rgb(33, 149, 243, 90), '', inline='New York', group='Sessions')
+// Session 4 - user inputs
+showSydney     = input.bool(false, title='', inline='Sydney', group='Sessions')
+stringSydney   = input.string('Sydney', '', inline='Sydney', group='Sessions')
+SydneyTimeX    = input.session(defval="2100-0600", title='     ', inline='Sydney2', group='Sessions', tooltip = 'If you want to change the start/end time of the session, just make sure they are in UTC. There is no need to change the timezone of your Tradingview chart or to change the Timezone input below, because the sessions will be plotted correctly as long as the start/end time is set in UTC.')
+SydneyCol      = input.color(color.rgb(164, 97, 187, 90), '', inline='Sydney', group='Sessions')
+// Additional tools and settings - user inputs
+pipChange      = input.bool(false, 'Change (Pips) ', inline='0', group = 'Additional Tools and Settings')
+percentChange  = input.bool(false, 'Change (%)', inline='0', group = 'Additional Tools and Settings')
+merge          = input.bool(false, 'Merge Overlaps', inline='2', group = 'Additional Tools and Settings')
+hideWeekends   = input.bool(true, 'Hide Weekends', inline='2', group = 'Additional Tools and Settings')
+sessionOC      = input.bool(true, 'Open/Close Line', inline='3', group = 'Additional Tools and Settings')
+halfline       = input.bool(false, 'Session 0.5 Level', inline='3', group = 'Additional Tools and Settings')
+colorcandles   = input.bool(false, 'Color Candles  ', inline='4', group = 'Additional Tools and Settings')
+showScreener   = input.bool(false, 'Screener (Soon)', inline='4', group = 'Additional Tools and Settings')
+displayType    = input.string('Boxes', 'Display Type', options = ['Boxes', 'Zones','Timeline', 'Candles'], group='Additional Tools and Settings', tooltip='Choose whether the scripts should plot session in the for of boxes or colored background zones.')
+daysBack       = input.float(150, 'Lookback (Days)', group='Additional Tools and Settings', tooltip= 'This inputs defines the lookback period for plotting sessions. Eg. If it is set to 1, only the sessions of the past day will appear')
+changeType     = input.string('Session High/Low','Change (%/Pips) Source', options = ['Session High/Low', 'Session Open/Close'], group='Additional Tools and Settings', tooltip='Choose whether the Change (%) and Change (Pips) should measure the distance between Session High and Session Low or the distance between Session Open and Session Close.')
+SessionZone    = input.string("UTC", title="Input Timezone", group='Additional Tools and Settings', tooltip = 'This input is defining the timezone for the session times selected above. It has nothing to do with the timezone of your chart, because the sessions will be plotted correctly even if your chart is not set to UTC.')
+// Appearance - user inputs
+borderWidth    = input.int(1, 'Box Border', inline='border', group='Appearance')
+borderStyle    = input.string('Dashed', '', ['Solid', 'Dashed', 'Dotted']  , inline='border', group='Appearance', tooltip='Select the width and style of session box borders')
+levelsStyle    = input.string('Dashed', 'Line Style', ['Solid', 'Dashed', 'Dotted'], group='Appearance', tooltip='Select the style of 0.5 and Open/Close lines.')
+labelSize      = input.string('Normal', 'Label Size', options = ['Auto', 'Tiny', 'Small', 'Normal'], group='Appearance', tooltip='Select the size of text labels.')
+showLabels     = input.bool(true, 'Session Labels ', inline='00', group = 'Appearance')
+colorBoxes     = input.bool(true, 'Box Background', inline='00', group = 'Appearance')
+
+// Excluding or Including Weekends 
+var TokyoTime   = hideWeekends ? TokyoTimeX+":123456" : TokyoTimeX+":1234567"
+var LondonTime  = hideWeekends ? LondonTimeX+":123456" : LondonTimeX+":1234567"
+var NewYorkTime = hideWeekends ? NewYorkTimeX+":123456" : NewYorkTimeX+":1234567"
+var SydneyTime  = hideWeekends ? SydneyTimeX+":123456" : SydneyTimeX+":1234567"
+
+// Defining Line Style and Label Size Variables
+lineStyle(x) =>
+    switch x
+        'Solid'  => line.style_solid
+        'Dashed' => line.style_dashed
+        'Dotted' => line.style_dotted
+labelStyle(x) =>
+    switch x
+        'Auto'   => size.auto
+        'Tiny'   => size.tiny
+        'Small'  => size.small
+        'Normal' => size.normal
+
+// Calculating inRange, used for lookback
+MSPD        = 24 * 60 * 60 * 1000
+lastBarDate = timestamp(year(timenow), month(timenow), dayofmonth(timenow), hour(timenow), minute(timenow), second(timenow))
+thisBarDate = timestamp(year, month, dayofmonth, hour, minute, second)
+daysLeft    = math.abs(math.floor((lastBarDate - thisBarDate) / MSPD))
+inRange     = daysLeft < daysBack
+
+// Session Time
+InTokyo(TokyoTime, TokyoTimeZone=syminfo.timezone)       =>
+    not na(time(timeframe.period, TokyoTime, SessionZone))
+InLondon(LondonTime, LondonTimeZone=syminfo.timezone)    =>
+    not na(time(timeframe.period, LondonTime, SessionZone))
+InNewYork(NewYorkTime, NewYorkTimeZone=syminfo.timezone) =>
+    not na(time(timeframe.period, NewYorkTime, SessionZone))
+InSydney(SydneyTime, SydneyTimeZone=syminfo.timezone)    =>
+    not na(time(timeframe.period, SydneyTime, SessionZone))
+
+// Creating variables Session High, Low, Open and Session Boxes, Lines and Texts
+var TokyoHighPrice     = 0.0, var TokyoLowPrice      = 0.0, var TokyoOpenPrice     = 0.0, var box TokyoBox       = na, var line TokyoLine     = na, var label TokyoLabel   = na, var line TokyoOC       = na, var string TokyoText   = str.tostring(stringTokyo)
+var LondonHighPrice    = 0.0, var LondonLowPrice     = 0.0, var LondonOpenPrice    = 0.0, var box LondonBox      = na, var line LondonLine    = na, var label LondonLabel  = na, var line LondonOC      = na, var string LondonText  = str.tostring(stringLondon)
+var NewYorkHighPrice   = 0.0, var NewYorkLowPrice    = 0.0, var NewYorkOpenPrice   = 0.0, var box NewYorkBox     = na, var line NewYorkLine   = na, var label NewYorkLabel = na, var line NewYorkOC     = na, var string NewYorkText = str.tostring(stringNewYork)
+var SydneyHighPrice    = 0.0, var SydneyLowPrice     = 0.0, var SydneyOpenPrice    = 0.0, var box SydneyBox      = na, var line SydneyLine    = na, var label SydneyLabel  = na, var line SydneyOC      = na, var string SydneyText  = str.tostring(stringSydney)
+
+// Checking if session is active/has started
+inTokyo        = InTokyo(TokyoTime, SessionZone)     and timeframe.isintraday
+TokyoStart     = inTokyo   and not inTokyo[1]
+inLondon       = InLondon(LondonTime, SessionZone)   and timeframe.isintraday
+LondonStart    = inLondon  and not inLondon[1]
+inNewYork      = InNewYork(NewYorkTime, SessionZone) and timeframe.isintraday
+NewYorkStart   = inNewYork and not inNewYork[1]
+inSydney       = InSydney(SydneyTime, SessionZone)   and timeframe.isintraday
+SydneyStart    = inSydney  and not inSydney[1]
+
+// Settings high, low, open at the beggining of the session
+if TokyoStart
+    TokyoHighPrice   := high
+    TokyoLowPrice    := low
+    TokyoOpenPrice   := open
+if LondonStart
+    LondonHighPrice  := high
+    LondonLowPrice   := low
+    LondonOpenPrice  := open
+if NewYorkStart
+    NewYorkHighPrice := high
+    NewYorkLowPrice  := low
+    NewYorkOpenPrice := open
+if SydneyStart
+    SydneyHighPrice  := high
+    SydneyLowPrice   := low
+    SydneyOpenPrice  := open
+
+// Track session's max high and max low during the session
+else if inTokyo
+    TokyoHighPrice   := math.max(TokyoHighPrice, high)
+    TokyoLowPrice    := math.min(TokyoLowPrice, low)
+else if inLondon
+    LondonHighPrice  := math.max(LondonHighPrice, high)
+    LondonLowPrice   := math.min(LondonLowPrice, low)
+else if inNewYork
+    NewYorkHighPrice := math.max(NewYorkHighPrice, high)
+    NewYorkLowPrice  := math.min(NewYorkLowPrice, low)
+else if inSydney
+    SydneyHighPrice  := math.max(SydneyHighPrice, high)
+    SydneyLowPrice   := math.min(SydneyLowPrice, low)
+
+// Plotting session boxes at the beginning of each session
+if TokyoStart and showTokyo and inRange
+    TokyoBox     := displayType=='Boxes' ? box.new(left=bar_index, top=na, right=na, bottom=na, border_width=borderWidth, bgcolor = colorBoxes ? TokyoCol : na, border_style = lineStyle(borderStyle), border_color=color.new(TokyoCol, 40)) : na
+    TokyoLine    := halfline   ? line.new(x1=bar_index, y1=na, x2=na, y2=na, style=lineStyle(levelsStyle), color = color.new(TokyoCol, 40)) : na
+    TokyoLabel   := showLabels ? label.new(x=na, y=na, text=TokyoText, textcolor=color.new(TokyoCol, 40), color=color.rgb(0,0,0,100), size=labelStyle(labelSize)) : na
+    TokyoOC      := sessionOC  ? line.new(x1=bar_index, y1=TokyoOpenPrice, x2=na, y2=na, style=lineStyle(levelsStyle), color = color.new(TokyoCol, 40)) : na
+if LondonStart and showLondon and inRange
+    LondonBox    := displayType=='Boxes' ? box.new(left=bar_index, top=na, right=na, bottom=na, border_width=borderWidth, bgcolor = colorBoxes ? LondonCol : na, border_style = lineStyle(borderStyle), border_color=color.new(LondonCol, 40)) : na
+    LondonLine   := halfline   ? line.new(x1=bar_index, y1=na, x2=na, y2=na, style=lineStyle(levelsStyle), color = color.new(LondonCol, 40)) : na
+    LondonLabel  := showLabels ? label.new(x=na, y=na, text=LondonText, textcolor=color.new(LondonCol, 40), color=color.rgb(0,0,0,100), size=labelStyle(labelSize)) : na
+    LondonOC     := sessionOC  ? line.new(x1=bar_index, y1=LondonOpenPrice, x2=na, y2=na, style=lineStyle(levelsStyle), color = color.new(LondonCol, 40)) : na
+if NewYorkStart and showNewYork and inRange
+    NewYorkBox   := displayType=='Boxes' ? box.new(left=bar_index, top=na, right=na, bottom=na, border_width=borderWidth, bgcolor = colorBoxes ? NewYorkCol : na, border_style = lineStyle(borderStyle), border_color=color.new(NewYorkCol, 40)) : na
+    NewYorkLine  := halfline   ? line.new(x1=bar_index, y1=na, x2=na, y2=na, style=lineStyle(levelsStyle), color = color.new(NewYorkCol, 40)) : na
+    NewYorkLabel := showLabels ? label.new(x=na, y=na, text=NewYorkText, textcolor=color.new(NewYorkCol, 40), color=color.rgb(0,0,0,100), size=labelStyle(labelSize)) : na
+    NewYorkOC    := sessionOC  ? line.new(x1=bar_index, y1=NewYorkOpenPrice, x2=na, y2=na, style=lineStyle(levelsStyle), color = color.new(NewYorkCol, 40)) : na
+if SydneyStart and showSydney and inRange
+    SydneyBox    := displayType=='Boxes' ? box.new(left=bar_index, top=na, right=na, bottom=na, border_width=borderWidth, bgcolor = colorBoxes ? SydneyCol : na, border_style = lineStyle(borderStyle), border_color=color.new(SydneyCol, 40)) : na
+    SydneyLine   := halfline   ? line.new(x1=bar_index, y1=na, x2=na, y2=na, style=lineStyle(levelsStyle), color = color.new(SydneyCol, 40)) : na
+    SydneyLabel  := showLabels ? label.new(x=na, y=na, text=SydneyText, textcolor=color.new(SydneyCol, 40), color=color.rgb(0,0,0,100), size=labelStyle(labelSize)) : na
+    SydneyOC     := sessionOC  ? line.new(x1=bar_index, y1=SydneyOpenPrice, x2=na, y2=na, style=lineStyle(levelsStyle), color = color.new(SydneyCol, 40)) : na
+
+// Creating variables for alternative Sessions Box top and bottom (used for merging sessions)
+var float TokyoHighM   = 0, var float TokyoLowM    = 0, var float LondonHighM  = 0, var float LondonLowM   = 0, var float NewYorkHighM = 0, var float NewYorkLowM  = 0, var float SydneyHighM  = 0, var float SydneyLowM   = 0
+
+// Updating session boxes during sessions
+if inTokyo and inRange
+    TokyoHighPrice   := math.max(TokyoHighPrice, high)
+    TokyoLowPrice    := math.min(TokyoLowPrice, low)
+    box.set_top(TokyoBox, TokyoHighPrice)
+    box.set_bottom(TokyoBox, TokyoLowPrice)
+    box.set_right(TokyoBox, bar_index + 1)
+    label.set_x(TokyoLabel, (box.get_left(TokyoBox)+box.get_right(TokyoBox))/2)
+    label.set_y(TokyoLabel, TokyoHighPrice)
+    if sessionOC
+        line.set_x2(TokyoOC, bar_index)
+        line.set_y2(TokyoOC, close)
+    if halfline
+        line.set_y1(TokyoLine, (TokyoHighPrice+TokyoLowPrice)/2)
+        line.set_y2(TokyoLine, (TokyoHighPrice+TokyoLowPrice)/2)
+        line.set_x2(TokyoLine, bar_index+1)
+    if merge and not inLondon and showLondon
+        TokyoHighM := TokyoHighPrice
+        TokyoLowM  := TokyoLowPrice
+    if merge and inLondon and showLondon
+        box.set_top(TokyoBox, TokyoHighM)
+        box.set_bottom(TokyoBox, TokyoLowM)
+        label.set_y(TokyoLabel, TokyoHighM)
+        box.set_right(TokyoBox, (box.get_left(LondonBox)))
+        line.set_x2(TokyoLine, (box.get_left(LondonBox)))
+        label.set_x(TokyoLabel, (box.get_left(TokyoBox)+box.get_right(TokyoBox))/2)
+        line.set_x2(TokyoOC, (box.get_left(LondonBox)))
+        line.set_y2(TokyoOC, LondonOpenPrice)
+        line.set_y1(TokyoLine, (TokyoHighM+TokyoLowM)/2)
+        line.set_y2(TokyoLine, (TokyoHighM+TokyoLowM)/2)
+    var float pips = 0
+    var float chg = 0
+    pips := changeType=='Session High/Low' ? ((TokyoHighPrice - TokyoLowPrice) / syminfo.mintick / 10) : ((close - TokyoOpenPrice) / syminfo.mintick / 10)
+    chg  := changeType=='Session Open/Close' ? (100 * (close - TokyoOpenPrice) / TokyoOpenPrice) : ((TokyoHighPrice - TokyoLowPrice) / TokyoLowPrice * 100)
+    if percentChange and not pipChange
+        label.set_text(TokyoLabel, str.tostring(TokyoText) + '  (' + str.tostring(chg, format.percent) + ')')
+    if pipChange and not percentChange
+        label.set_text(TokyoLabel, str.tostring(TokyoText) + '  (' + str.tostring(pips) + ')')
+    if percentChange and pipChange
+        label.set_text(TokyoLabel, str.tostring(TokyoText) + '  ('+ str.tostring(chg, format.percent)+ ' • ' + str.tostring(pips) + ')')
+if inLondon and inRange
+    LondonHighPrice  := math.max(LondonHighPrice, high)
+    LondonLowPrice   := math.min(LondonLowPrice, low)
+    box.set_top(LondonBox, LondonHighPrice)
+    box.set_bottom(LondonBox, LondonLowPrice)
+    box.set_right(LondonBox, bar_index+1)
+    label.set_x(LondonLabel, (box.get_left(LondonBox)+box.get_right(LondonBox))/2)
+    label.set_y(LondonLabel, LondonHighPrice)
+    if sessionOC
+        line.set_x2(LondonOC, bar_index)
+        line.set_y2(LondonOC, close)
+    if halfline
+        line.set_y1(LondonLine, (LondonHighPrice+LondonLowPrice)/2)
+        line.set_y2(LondonLine, (LondonHighPrice+LondonLowPrice)/2)
+        line.set_x2(LondonLine, bar_index+1)
+    if merge and not inNewYork and showNewYork
+        LondonHighM := LondonHighPrice
+        LondonLowM  := LondonLowPrice
+    if merge and inNewYork and showNewYork
+        box.set_top(LondonBox, LondonHighM)
+        box.set_bottom(LondonBox, LondonLowM)
+        label.set_y(LondonLabel, LondonHighM)
+        box.set_right(LondonBox, (box.get_left(NewYorkBox)))
+        line.set_x2(LondonLine, (box.get_left(NewYorkBox)))
+        label.set_x(LondonLabel, (box.get_left(LondonBox)+box.get_right(LondonBox))/2)
+        line.set_x2(LondonOC, (box.get_left(NewYorkBox)))
+        line.set_y2(LondonOC, NewYorkOpenPrice)
+        line.set_y1(LondonLine, (LondonHighM+LondonLowM)/2)
+        line.set_y2(LondonLine, (LondonHighM+LondonLowM)/2)
+    var float pips = 0
+    var float chg = 0
+    pips := changeType=='Session High/Low' ? ((LondonHighPrice - LondonLowPrice) / syminfo.mintick / 10) : ((close - LondonOpenPrice) / syminfo.mintick / 10)
+    chg  := changeType=='Session Open/Close' ? (100 * (close - LondonOpenPrice) / LondonOpenPrice) : ((LondonHighPrice - LondonLowPrice) / LondonLowPrice * 100)
+    if percentChange and not pipChange
+        label.set_text(LondonLabel, str.tostring(LondonText) + '  (' + str.tostring(chg, format.percent) + ')')
+    if pipChange and not percentChange
+        label.set_text(LondonLabel, str.tostring(LondonText) + '  (' + str.tostring(pips) + ')')
+    if percentChange and pipChange
+        label.set_text(LondonLabel, str.tostring(LondonText) + '  ('+ str.tostring(chg, format.percent)+ ' • ' + str.tostring(pips) + ')')
+if inNewYork and inRange
+    NewYorkHighPrice  := math.max(NewYorkHighPrice, high)
+    NewYorkLowPrice   := math.min(NewYorkLowPrice, low)
+    box.set_top(NewYorkBox, NewYorkHighPrice)
+    box.set_bottom(NewYorkBox, NewYorkLowPrice)
+    box.set_right(NewYorkBox, bar_index + 1)
+    label.set_x(NewYorkLabel, (box.get_left(NewYorkBox)+box.get_right(NewYorkBox))/2)
+    label.set_y(NewYorkLabel, NewYorkHighPrice)
+    if sessionOC
+        line.set_x2(NewYorkOC, bar_index)
+        line.set_y2(NewYorkOC, close)
+    if halfline
+        line.set_y1(NewYorkLine, (NewYorkHighPrice+NewYorkLowPrice)/2)
+        line.set_y2(NewYorkLine, (NewYorkHighPrice+NewYorkLowPrice)/2)
+        line.set_x2(NewYorkLine, bar_index+1)
+    if merge and not inSydney and showSydney
+        NewYorkHighM := NewYorkHighPrice
+        NewYorkLowM  := NewYorkLowPrice
+    if merge and inSydney and showSydney
+        box.set_top(NewYorkBox, NewYorkHighM)
+        box.set_bottom(NewYorkBox, NewYorkLowM)
+        label.set_y(NewYorkLabel, NewYorkHighM)
+        box.set_right(NewYorkBox, (box.get_left(SydneyBox)))
+        line.set_x2(NewYorkLine, (box.get_left(SydneyBox)))
+        label.set_x(NewYorkLabel, (box.get_left(NewYorkBox)+box.get_right(NewYorkBox))/2)
+        line.set_x2(NewYorkOC, (box.get_left(SydneyBox)))
+        line.set_y2(NewYorkOC, SydneyOpenPrice)
+        line.set_y1(NewYorkLine, (NewYorkHighM+NewYorkLowM)/2)
+        line.set_y2(NewYorkLine, (NewYorkHighM+NewYorkLowM)/2)
+    var float pips = 0
+    var float chg = 0
+    pips := changeType=='Session High/Low' ? ((NewYorkHighPrice - NewYorkLowPrice) / syminfo.mintick / 10) : ((close - NewYorkOpenPrice) / syminfo.mintick / 10)
+    chg  := changeType=='Session Open/Close' ? (100 * (close - NewYorkOpenPrice) / NewYorkOpenPrice) : ((NewYorkHighPrice - NewYorkLowPrice) / NewYorkLowPrice * 100)
+    if percentChange and not pipChange
+        label.set_text(NewYorkLabel, str.tostring(NewYorkText) + '  (' + str.tostring(chg, format.percent) + ')')
+    if pipChange and not percentChange
+        label.set_text(NewYorkLabel, str.tostring(NewYorkText) + '  (' + str.tostring(pips) + ')')
+    if percentChange and pipChange
+        label.set_text(NewYorkLabel, str.tostring(NewYorkText) + '  ('+ str.tostring(chg, format.percent)+ ' • ' + str.tostring(pips) + ')')
+if inSydney and inRange
+    SydneyHighPrice  := math.max(SydneyHighPrice, high)
+    SydneyLowPrice   := math.min(SydneyLowPrice, low)
+    box.set_top(SydneyBox, SydneyHighPrice)
+    box.set_bottom(SydneyBox, SydneyLowPrice)
+    box.set_right(SydneyBox, bar_index + 1)
+    label.set_x(SydneyLabel, (box.get_left(SydneyBox)+box.get_right(SydneyBox))/2)
+    label.set_y(SydneyLabel, SydneyHighPrice)
+    if sessionOC
+        line.set_x2(SydneyOC, bar_index)
+        line.set_y2(SydneyOC, close)
+    if halfline
+        line.set_y1(SydneyLine, (SydneyHighPrice+SydneyLowPrice)/2)
+        line.set_y2(SydneyLine, (SydneyHighPrice+SydneyLowPrice)/2)
+        line.set_x2(SydneyLine, bar_index+1)
+    if merge and not inTokyo and showTokyo
+        SydneyHighM := SydneyHighPrice
+        SydneyLowM  := SydneyLowPrice
+    if merge and inTokyo and showTokyo
+        box.set_top(SydneyBox, SydneyHighM)
+        box.set_bottom(SydneyBox, SydneyLowM)
+        label.set_y(SydneyLabel, SydneyHighM)
+        box.set_right(SydneyBox, (box.get_left(TokyoBox)))
+        line.set_x2(SydneyLine, (box.get_left(TokyoBox)))
+        label.set_x(SydneyLabel, (box.get_left(SydneyBox)+box.get_right(SydneyBox))/2)
+        line.set_x2(SydneyOC, (box.get_left(TokyoBox)))
+        line.set_y2(SydneyOC, TokyoOpenPrice)
+        line.set_y1(SydneyLine, (SydneyHighM+SydneyLowM)/2)
+        line.set_y2(SydneyLine, (SydneyHighM+SydneyLowM)/2)
+    var float pips = 0
+    var float chg = 0
+    pips := changeType=='Session High/Low' ? ((SydneyHighPrice - SydneyLowPrice) / syminfo.mintick / 10) : ((close - SydneyOpenPrice) / syminfo.mintick / 10)
+    chg  := changeType=='Session Open/Close' ? (100 * (close - SydneyOpenPrice) / SydneyOpenPrice) : ((SydneyHighPrice - SydneyLowPrice) / SydneyLowPrice * 100)
+    if percentChange and not pipChange
+        label.set_text(SydneyLabel, str.tostring(SydneyText) + '  (' + str.tostring(chg, format.percent) + ')')
+    if pipChange and not percentChange
+        label.set_text(SydneyLabel, str.tostring(SydneyText) + '  (' + str.tostring(pips) + ')')
+    if percentChange and pipChange
+        label.set_text(SydneyLabel, str.tostring(SydneyText) + '  ('+ str.tostring(chg, format.percent)+ ' • ' + str.tostring(pips) + ')')
+
+// Coloring candles
+TKLO = showLondon  ? (not inLondon)  : true
+LONY = showNewYork ? (not inNewYork) : true
+NYSY = showSydney  ? (not inSydney)  : true
+SYTK = showTokyo   ? (not inTokyo)   : true
+barcolor((colorcandles or displayType=='Candles') and not merge and  showTokyo   and inTokyo   and inRange          ? color.new(TokyoCol, 40) : na, editable = false)
+barcolor((colorcandles or displayType=='Candles') and not merge and  showLondon  and inLondon  and inRange          ? color.new(LondonCol, 40) : na, editable = false)
+barcolor((colorcandles or displayType=='Candles') and not merge and  showNewYork and inNewYork and inRange          ? color.new(NewYorkCol, 40) : na, editable = false)
+barcolor((colorcandles or displayType=='Candles') and not merge and  showSydney  and inNewYork and inRange          ? color.new(SydneyCol, 40) : na, editable = false)
+barcolor((colorcandles or displayType=='Candles') and merge     and  showTokyo   and inTokyo   and TKLO and inRange ? color.new(TokyoCol, 40) : na, editable = false)
+barcolor((colorcandles or displayType=='Candles') and merge     and  showLondon  and inLondon  and LONY and inRange ? color.new(LondonCol, 40) : na, editable = false)
+barcolor((colorcandles or displayType=='Candles') and merge     and  showNewYork and inNewYork and NYSY and inRange ? color.new(NewYorkCol, 40) : na, editable = false)
+barcolor((colorcandles or displayType=='Candles') and merge     and  showSydney  and inSydney  and SYTK and inRange ? color.new(SydneyCol, 40) : na, editable = false)
+
+// Coloring background if displayType=='Zones'
+TokyoT              = time(timeframe.period, TokyoTime)
+LondonT             = time(timeframe.period, LondonTime)
+NewYorkT            = time(timeframe.period, NewYorkTime)
+SydneyT             = time(timeframe.period, SydneyTime)
+bgcolor(displayType == 'Zones' and not merge and showTokyo   and inRange and  time == TokyoT   ? TokyoCol   : na, editable = false)
+bgcolor(displayType == 'Zones' and not merge and showLondon  and inRange and  time == LondonT  ? LondonCol  : na, editable = false)
+bgcolor(displayType == 'Zones' and not merge and showNewYork and inRange and  time == NewYorkT ? NewYorkCol : na, editable = false)
+bgcolor(displayType == 'Zones' and not merge and showSydney  and inRange and  time == SydneyT  ? SydneyCol  : na, editable = false)
+bgcolor(displayType == 'Zones' and merge and not inLondon  and showTokyo   and inRange and  time == TokyoT   ? TokyoCol   : na, editable = false)
+bgcolor(displayType == 'Zones' and merge and not inNewYork and showLondon  and inRange and  time == LondonT  ? LondonCol  : na, editable = false)
+bgcolor(displayType == 'Zones' and merge and not inSydney  and showNewYork and inRange and  time == NewYorkT ? NewYorkCol : na, editable = false)
+bgcolor(displayType == 'Zones' and merge and not inTokyo   and showSydney  and inRange and  time == SydneyT  ? SydneyCol  : na, editable = false)
+
+// Plotting sessions in Timeline form
+plotshape(displayType=='Timeline' and (merge and showLondon  ? (showTokyo   and inTokyo   and not inLondon)  : showTokyo   and inTokyo),   style=shape.square, color=TokyoCol,   location = location.bottom, size=size.auto)
+plotshape(displayType=='Timeline' and (merge and showNewYork ? (showLondon  and inLondon  and not inNewYork) : showLondon  and inLondon),  style=shape.square, color=LondonCol,  location = location.bottom, size=size.auto)
+plotshape(displayType=='Timeline' and (merge and showSydney  ? (showNewYork and inNewYork and not inSydney)  : showNewYork and inNewYork), style=shape.square, color=NewYorkCol, location = location.bottom, size=size.auto)
+plotshape(displayType=='Timeline' and (merge and showTokyo   ? (showSydney  and inSydney  and not inTokyo)   : showSydney  and inSydney),  style=shape.square, color=SydneyCol,  location = location.bottom, size=size.auto)
+
+// Creating alerts
+alertcondition(inTokyo   and not inTokyo[1], 'Tokyo Open', 'The Tokyo Session has started')
+alertcondition(inLondon  and not inLondon[1], 'London Open', 'The London Session has started')
+alertcondition(inNewYork and not inNewYork[1], 'New York Open', 'The New York Session has started')
+alertcondition(inSydney  and not inSydney[1], 'Sydney Open', 'The Sydney Session has started')
+alertcondition(high > TokyoHighPrice[0]    and inTokyo, 'Tokyo Session - New High', 'New High in Tokyo Session')
+alertcondition(high > LondonHighPrice[0]   and inLondon, 'London Session - New High', 'New High in London Session')
+alertcondition(high > NewYorkHighPrice[0]  and inNewYork, 'New York Session - New High', 'New High in New York Session')
+alertcondition(high > SydneyHighPrice[0]   and inSydney, 'Sydney Session - New High', 'New High in Sydney Session')
+alertcondition(low  > TokyoLowPrice[0]     and inTokyo, 'Tokyo Session - New Low', 'New Low in Tokyo Session')
+alertcondition(low  > LondonLowPrice[0]    and inLondon, 'London Session - New Low', 'New Low in London Session')
+alertcondition(low  > NewYorkLowPrice[0]   and inNewYork, 'New York Session - New Low', 'New Low In New York Session')
+alertcondition(low  > SydneyLowPrice[0]    and inSydney, 'Sydney Session - New Low', 'New Low In Sydney Session')
+
+//@version=5
+
+
+// ~~ inputs {
+prd        = input.int(20, title="False Breakout Period",minval=2, maxval=100, group="Main Settings", tooltip="Set the new high/low period.")
+minperiod  = input.int(5,title="New Breakout within minimum X bars",minval=0,  group="Main Settings", maxval=100, tooltip="A New Breakout within minimum X bars, in other words, a low value returns more fakeouts and a high value returns less.")
+maxperiod  = input.int(5,title="Signal valid for X bars",minval=1, maxval=100, group="Main Settings", tooltip="Set how many periods the fakeout signals can be valid. A high value returns more false breakouts and a low value returns fewer false breakouts.")
+maType     = input.string("💎", title="Select Smoothing",options=["💎","WMA","HMA"],inline="Select Smoothing", group="Advanced Smoothing")
+length2     = input.int(10, title="", minval=1, maxval=100,inline = "Select Smoothing", group="Advanced Smoothing", tooltip="Set a smoothing filter, it helps to filter out some signals and can be used to catch continuation fakeouts. If you use a smoothing filter please consider increasing the 'Signal valid for X bars' to above 10-50.")
+a          = input.bool(false, title="Aggressive", group="Advanced Smoothing", tooltip="This filter enables a more aggressive false breakout detection.")
+//~~~}
+
+// ~~ var {
+var val   = float(na)
+var index = array.new<int>(2,0)
+var count = 0
+n2         = bar_index
+h         = high
+l         = low  
+c         = close    
+//~~~}
+
+// ~~ smoothing {
+smoothing(src,len)=>
+    ma = switch maType
+        "WMA"    => ta.wma(src,len)  
+        "HMA"    => ta.hma(src,len)       
+        "💎"     => src
+//~~~}
+
+// ~~ new high/low {
+hi     = smoothing(ta.highest(a?l:h,prd),length)
+lo     = smoothing(ta.lowest(a?h:l,prd),length)
+condHi = hi>hi[1] and hi[1]<=hi[2]
+condLo = lo<lo[1] and lo[1]>=lo[2] 
+//~~~}
+
+// ~~ count {
+if condHi
+    if count>0
+        count := 0
+    count     := count - 1
+    val       := l
+    array.unshift(index,n)
+    array.pop(index)
+if condLo
+    if count<0
+        count := 0
+    count     := count + 1
+    val       := h
+    array.unshift(index,n)
+    array.pop(index)
+//~~~}
+
+// ~~ cond {
+indx0             = array.get(index,0)
+indx1             = array.get(index,1)
+minbars           = indx1+minperiod<indx0
+maxvalid          = n-maxperiod<=indx0  
+breakdown         = ta.crossunder(c,val)
+breakup           = ta.crossover(c,val) 
+falsebreakoutup   = count<-1 and breakdown and maxvalid and minbars
+falsebreakoutdown = count>1  and breakup   and maxvalid and minbars
+//~~~}
+
+// ~~ plot {
+if falsebreakoutup
+    count := 0
+    line.new(indx0,val,n,val,color=#f23645, width = 2)
+if falsebreakoutdown
+    count := 0
+    line.new(indx0,val,n,val,color=#6ce5a0, width = 2)
+
+plotshape(falsebreakoutup?h:na, title="False Breakout Up", color=#f23645, text ="🔔" ,location=location.abovebar,size=size.small)
+plotshape(falsebreakoutdown?l:na, title="False Breakout Down", color=#6ce5a0, text ="🔔" ,location=location.belowbar,size=size.small)
+//~~~}
+
+// ~~ alerts {
+alertcondition(falsebreakoutup, 'False Breakout Up', 'False Breakout Up')
+alertcondition(falsebreakoutdown, 'False Breakout Down', 'False Breakout Down')
+
+//~~~}
+
+
+//@version=5
+
+
+source = input.source(ohlc4, title='Source', group='Source')
+Low_period = input.int(30, title='Low Period', group='GreedZone Settings')
+Stdev_period = input.int(50, title='Stdev Period', group='GreedZone Settings')
+
+WMA = input.bool(false, title='Use WMA instead of SMA?', group='Average Type')
+
+
+// Condition One 
+FZ1 = (ta.lowest(source, Low_period) - source) / ta.lowest(source, Low_period)
+AVG1 = ta.sma(FZ1, Stdev_period)
+
+if WMA
+    AVG1 := ta.wma(FZ1, Stdev_period)
+    AVG1
+
+STDEV1 = ta.stdev(FZ1, Stdev_period)
+FZ1Limit = AVG1 - STDEV1
+
+
+// Condition Two
+FZ2 = ta.sma(source, Low_period)
+AVG2 = ta.sma(FZ2, Stdev_period)
+
+if WMA
+    FZ2 := ta.wma(source, Low_period)
+    AVG2 := ta.wma(FZ2, Stdev_period)
+    AVG2
+
+
+STDEV2 = ta.stdev(FZ2, Stdev_period)
+FZ2Limit = AVG2 + STDEV2
+
+
+// GreedZone
+Greedzone_Con = FZ1 < FZ1Limit and FZ2 > FZ2Limit
+GreedZoneOpen = Greedzone_Con ? low + ta.tr : na
+GreedZoneClose = Greedzone_Con ? low + 2 * ta.tr : na
+
+plotcandle(GreedZoneOpen, GreedZoneOpen, GreedZoneClose, GreedZoneClose, color=#90EE90, bordercolor=color.green, title='GreedZone Candlesticks')
+
+
+// Alerts
+AlertCircle = input.bool(true, title='Show Alert Circle?', group='Alerts')
+Alert_Col = Greedzone_Con != Greedzone_Con[1] and AlertCircle ? #90EE90 : na
+plotshape(Greedzone_Con, style=shape.circle, location=location.abovebar, size=size.tiny, color=Alert_Col, title='Alert Circle')
+alertcondition(Greedzone_Con != Greedzone_Con[1], title='GreedZone', message='GreedZone')
+
+
+
+
+//@version=5
+
+         
+wicks = input(false, "Take Wicks into Account ?")
+highlightState = input(true, "Highlight State ?")
+ma(source, length, type) =>
+    type == "SMA" ? ta.sma(source, length) :
+     type == "EMA" ? ta.ema(source, length) :
+     type == "SMMA (RMA)" ? ta.rma(source, length) :
+     type == "WMA" ? ta.wma(source, length) :
+     type == "VWMA" ? ta.vwma(source, length) :
+     na
+
+show_ma1   = input(true   , "MA High", inline="MA #1", group="Channel №1")
+ma1_type   = input.string("SMA"  , ""     , inline="MA #1", options=["SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group="Channel №1")
+ma1_source = input(high  , ""     , inline="MA #1", group="Channel №1")
+ma1_length = input.int(200     , ""     , inline="MA #1", minval=1, group="Channel №1")
+ma1_color  = input(color.green, ""     , inline="MA #1", group="Channel №1")
+ma1 = ma(ma1_source, ma1_length, ma1_type)
+
+show_ma2   = input(true   , "MA Low", inline="MA #2", group="Channel №1")
+ma2_type   = input.string("SMA"  , ""     , inline="MA #2", options=["SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group="Channel №1")
+ma2_source = input(low  , ""     , inline="MA #2", group="Channel №1")
+ma2_length = input.int(200     , ""     , inline="MA #2", minval=1, group="Channel №1")
+ma2_color  = input(color.red, ""     , inline="MA #2", group="Channel №1")
+ma2 = ma(ma2_source, ma2_length, ma2_type)
+showLabels1 = input(true, "Show Лонг/Шорт Labels ?", group="Channel №1")
+
+show_ma3   = input(false   , "MA High", inline="MA #3", group="Channel №2")
+ma3_type   = input.string("SMA"  , ""     , inline="MA #3", options=["SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group="Channel №2")
+ma3_source = input(high  , ""     , inline="MA #3", group="Channel №2")
+ma3_length = input.int(20    , ""     , inline="MA #3", minval=1, group="Channel №2")
+ma3_color  = input(color.orange, ""     , inline="MA #3", group="Channel №2")
+ma3 = ma(ma3_source, ma3_length, ma3_type)
+
+show_ma4   = input(false   , "MA Low", inline="MA #4", group="Channel №2")
+ma4_type   = input.string("SMA"  , ""     , inline="MA #4", options=["SMA", "EMA", "SMMA (RMA)", "WMA", "VWMA"], group="Channel №2")
+ma4_source = input(low  , ""     , inline="MA #4", group="Channel №2")
+ma4_length = input.int(20    , ""     , inline="MA #4", minval=1, group="Channel №2")
+ma4_color  = input(color.blue, ""     , inline="MA #4", group="Channel №2")
+ma4 = ma(ma4_source, ma4_length, ma4_type)
+showLabels2 = input(true, "Show Лонг/Шорт Labels ?", group="Channel №2")
+
+Hlv1 = float(na)
+Hlv1 := (wicks ? high : close) > ma1 ? 1 : (wicks ? low : close) < ma2 ? -1 : Hlv1[1]
+sslUp1   = Hlv1 < 0 ? ma2 : ma1
+sslDown1 = Hlv1 < 0 ? ma1 : ma2
+
+Color1 = Hlv1 == 1 ? ma1_color : ma2_color
+fillColor1 = highlightState ? (color.new(Color1, 90)) : na
+
+highLine1 = plot(show_ma1 ? sslUp1 : na, title="UP", linewidth=2, color = Color1)
+lowLine1 = plot(show_ma2 ? sslDown1 : na, title="DOWN", linewidth=2, color = Color1)
+
+plotshape(show_ma1 and showLabels1 and Hlv1 == 1 and Hlv1[1] == -1, title="Лонг Label", text="Лонг", location=location.belowbar, style=shape.labelup, size=size.tiny, color=Color1, textcolor=color.white)
+plotshape(show_ma2 and showLabels1 and Hlv1 == -1 and Hlv1[1] == 1, title="Шорт Label", text="Шорт", location=location.abovebar, style=shape.labeldown, size=size.tiny, color=Color1, textcolor=color.white)
+
+fill(highLine1, lowLine1, color = fillColor1)
+
+Hlv2 = float(na)
+Hlv2 := (wicks ? high : close) > ma3 ? 1 : (wicks ? low : close) < ma4 ? -1 : Hlv2[1]
+sslUp2   = Hlv2 < 0 ? ma4 : ma3
+sslDown2 = Hlv2 < 0 ? ma3 : ma4
+
+Color2 = Hlv2 == 1 ? ma3_color : ma4_color
+fillColor2 = highlightState ? (color.new(Color2, 90)) : na
+
+highLine2 = plot(show_ma3 ? sslUp2 : na, title="UP", linewidth=2, color = Color2)
+lowLine2 = plot(show_ma4 ? sslDown2 : na, title="DOWN", linewidth=2, color = Color2)
+
+plotshape(show_ma3 and showLabels2 and Hlv2 == 1 and Hlv2[1] == -1, title="Лонг Label", text="Лонг", location=location.belowbar, style=shape.labelup, size=size.tiny, color=Color2, textcolor=color.white)
+plotshape(show_ma4 and showLabels2 and Hlv2 == -1 and Hlv2[1] == 1, title="Шорт Label", text="Шорт", location=location.abovebar, style=shape.labeldown, size=size.tiny, color=Color2, textcolor=color.white)
+
+fill(highLine2, lowLine2, color = fillColor2)
+
+// Alerts
+alertcondition(Hlv1 == 1 and Hlv1[1] == -1, title="M&D Trading indicator (1) Лонг Alert", message = "M&D Trading indicator (1): Лонг")
+alertcondition(Hlv1 == -1 and Hlv1[1] == 1, title="M&D Trading indicator (1) Шорт Alert", message = "M&D Trading indicator (1): Шорт")
+alertcondition(Hlv2 == 1 and Hlv2[1] == -1, title="M&D Trading indicator (2) Лонг Alert", message = "M&D Trading indicator (2): Лонг")
+alertcondition(Hlv2 == -1 and Hlv2[1] == 1, title="M&D Trading indicator (2) Шорт Alert", message = "M&D Trading indicator (2): Шорт")
